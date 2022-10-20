@@ -140,12 +140,16 @@ class Env(object):
         trajectories[player_id].append(state)
         while not self.is_over():
             # Agent plays
+            # eval_step和step的预估结果是一样的
             if not is_training:
+                # 在这里会进行epsilon greedy，是进行模型training的时候前向计算使用的。
                 action, _ = self.agents[player_id].eval_step(state)
             else:
+                # 这里就是单纯的用最大Q值，非training用途，用来跑预估值的。
                 action = self.agents[player_id].step(state)
 
             # Environment steps
+            # 这里用step是因为产出的trajectories是要拿去用作训练的，所以一定需要epsilon greedy
             next_state, next_player_id = self.step(action, self.agents[player_id].use_raw)
             # Save action
             trajectories[player_id].append(action)

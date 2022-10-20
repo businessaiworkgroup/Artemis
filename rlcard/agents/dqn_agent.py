@@ -191,26 +191,54 @@ class DQNAgent(object):
         Returns:
             loss (float): The loss of the current batch.
         '''
+
+        # 批式训练，一个batch有32个样本(transition)
         state_batch, action_batch, reward_batch, next_state_batch, legal_actions_batch, done_batch = self.memory.sample()
 
+        # 可以自己把原始牌型，action和目标牌型打出来看看
+        # print("-----sample-----")
+        # for i in range(0, len(state_batch)):
+        #     print(state_batch[i], action_batch[i], next_state_batch[i])
+        # print("-----sample done-----")
+
         # Calculate best next actions using Q-network (Double DQN)
+        # 比如采样出来32个样本，那么预估出来q_values_next的长度也是32
+        # 这里输入的next_state_batch是玩家和庄家的总点数，也就是obs。
+        # 这里输出的是两个动作(hit, stant)对应的预估Q值。
         q_values_next = self.q_estimator.predict_nograd(next_state_batch)
+
         legal_actions = []
         for b in range(self.batch_size):
             legal_actions.extend([i + b * self.num_actions for i in legal_actions_batch[b]])
+
         masked_q_values = -np.inf * np.ones(self.num_actions * self.batch_size, dtype=float)
+        # 这语法我看不懂，反正就是masked_q_values和q_values_next.flatten()的值一样就对
         masked_q_values[legal_actions] = q_values_next.flatten()[legal_actions]
         masked_q_values = masked_q_values.reshape((self.batch_size, self.num_actions))
+        # 每个batch选择Q值最大的那个action，shape是(batch size)
         best_actions = np.argmax(masked_q_values, axis=1)
 
         # Evaluate best next actions using Target-network (Double DQN)
         q_values_next_target = self.target_estimator.predict_nograd(next_state_batch)
+
+        # y=reward+discount*maxQ, 看dqn伪代码
         target_batch = reward_batch + np.invert(done_batch).astype(np.float32) * \
             self.discount_factor * q_values_next_target[np.arange(self.batch_size), best_actions]
 
         # Perform gradient descent update
         state_batch = np.array(state_batch)
 
+       
+        # 这三个是喂给模型的训练样本batch，分别是
+        # state_batch: 状态样本obs[玩家总点数，庄家总点数]
+        # action_batch: 动作样本, [hit, stand]
+        # target_batch: 就是通过reward和maxQ计算出来的yi，作为下一轮迭代的label，看看伪代码里面的yi
+        # 可以自己打印出来看看
+        # print("------state_batch:", state_batch)
+        # print("------action_batch:", action_batch)
+        # print("------target_batch:", target_batch)
+
+        # 计算loss，梯度下降反向传播更新模型参数。
         loss = self.q_estimator.update(state_batch, action_batch, target_batch)
         print('\rINFO - Step {}, rl-loss: {}'.format(self.total_t, loss), end='')
 
