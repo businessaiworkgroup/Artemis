@@ -5,12 +5,12 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
+from torch.distributions import Categorical
 
 # 网络参数初始化，采用均值为 0，方差为 0.1 的高斯分布
 def init_weights(m):
     if isinstance(m, nn.Linear):
         nn.init.normal_(m.weight, mean=0, std=0.1)
-
 
 # 策略网络
 class Actor(nn.Module):
@@ -23,7 +23,6 @@ class Actor(nn.Module):
         output = F.softmax(output, dim=-1)  # 概率归一化
         return output
 
-
 # 价值网络
 class Critic(nn.Module):
     def __init__(self, num_spaces):
@@ -33,7 +32,6 @@ class Critic(nn.Module):
     def forward(self, s):
         output = self.net(s)
         return output
-
 
 # A2C 的主体函数
 class ACAgent(object):
@@ -64,6 +62,7 @@ class ACAgent(object):
         self.epsilon = epsilon
         self.target_replace_iter = target_replace_iter
         self.num_actions = num_actions
+        self.transit_one_batch = []
 
     def choose_action(self, s, is_training=True):
         s = torch.unsqueeze(torch.FloatTensor(s), dim=0)  # 增加维度
@@ -73,7 +72,6 @@ class ACAgent(object):
         if np.random.uniform() < self.epsilon:  # ϵ-greedy 策略对动作进行采取，先固定
             action_value = self.actor_net(s)
             action = torch.max(action_value, dim=1)[1].item()
-            print ('action_value training', action_value, action)
         else:
             action = np.random.randint(0, self.num_actions)
         return action
@@ -85,35 +83,59 @@ class ACAgent(object):
         info = {}
         return (self.choose_action(state['obs'], False), info)
 
-    def feed(self, ts):
-        (s, a, r, s_, done) = tuple(ts)
-        s = s['obs']
-        s_ = s_['obs']
+    def _compute_returns(self, rewards, masks, gamma):
+        R = 0
+        returns = []
+        for step in reversed(range(len(rewards))):
+            R = rewards[step] + gamma * R * masks[step]
+            returns.insert(0, R)
+        return returns
 
-        if self.learn_step_counter % self.target_replace_iter == 0:  # 更新目标网络
-            self.target_net.load_state_dict(self.critic_net.state_dict())
+    def feed(self, transit):
+        (s, a, r, s_, done) = tuple(transit)
+        self.transit_one_batch.append(transit)
+        if not done:
+            return
+        log_probs = []
+        critic_vals = []
+        masks = []
+        rewards = []
 
-        self.learn_step_counter += 1
+        for ts in self.transit_one_batch:
+            (s, a, r, s_, done) = tuple(ts)
+            s = s['obs']
+            s = torch.FloatTensor(s)
+            # actor predict
+            act_prob = self.actor_net(s)
+            act_prob = Categorical(act_prob)
+            log_prob = act_prob.log_prob(torch.tensor([a], dtype=torch.float)).unsqueeze(0)
 
-        s = torch.FloatTensor(s)
-        s_ = torch.FloatTensor(s_)
+            critic_val = self.critic_net(s)
 
-        q_actor = self.actor_net(s)  # 策略网络
-        q_critic = self.critic_net(s)  # 价值对当前状态进行打分
-        q_next = self.target_net(s_).detach()  # 目标网络对下一个状态进行打分
+            log_probs.append(log_prob)
+            critic_vals.append(critic_val)
+            masks.append(torch.tensor([1-done], dtype=torch.float))
+            rewards.append(torch.tensor([r], dtype=torch.float))
 
-        q_target = r + self.discount_factor * q_next  # 更新 TD 目标
-        td_error = (q_critic - q_target).detach()  # TD 误差
+        # target value
+        returns = self._compute_returns(rewards, masks, self.discount_factor)
+        log_probs = torch.cat(log_probs)
+        critic_vals = torch.cat(critic_vals)
+        returns = torch.cat(returns)
 
-        # 更新价值网络V(s)
-        loss_critic = self.criterion_critic(q_critic, q_target)
+        td_error = returns - critic_vals
+
+        actor_loss = -(log_probs * td_error.detach()).mean()
+        critic_loss = td_error.pow(2).mean()
+
+        # update parameters
         self.optimizer_critic.zero_grad()
-        loss_critic.backward()
-        self.optimizer_critic.step()
-
-        # 更新策略网络Actor
-        log_q_actor = torch.log(q_actor)
-        actor_loss = log_q_actor[a] * td_error
         self.optimizer_actor.zero_grad()
+
         actor_loss.backward()
+        critic_loss.backward()
+
+        self.optimizer_critic.step()
         self.optimizer_actor.step()
+        # finish current trajectory
+        self.transit_one_batch.clear()
