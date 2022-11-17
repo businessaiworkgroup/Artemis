@@ -1,9 +1,11 @@
+from cProfile import label
 from rlcard import make
 from rlcard.agents.dqn_agent import DQNAgent
 import torch
 from rlcard.agents.nfsp_agent import  NFSPAgent
 from rlcard.agents.random_agent import RandomAgent
 import numpy as np
+import matplotlib.pyplot as plt
 
 env = make("blackjack")
 print("Number of actions:", env.num_actions)
@@ -65,8 +67,15 @@ for episode in range(100): # 1000->1000
             best_score = score
 
 
-print("-----------eval------------")
-for episode in range(100):
+print("\n-----------eval------------")
+
+
+q_values_hit = []
+q_values_stand = []
+x_num = []
+start = 0
+
+for episode in range(10000):
     trajectories, payoffs = env.run(is_training=False)
     trajectories = reorganize(trajectories, payoffs)
     tras = trajectories
@@ -75,4 +84,17 @@ for episode in range(100):
         (state, action, reward, next_state, done) = tuple(ts)
         q_values = agent.predict(state)
         best_action = np.argmax(q_values)
-        print(q_values[best_action])
+        q_values_hit.append(q_values[0])
+        q_values_stand.append(q_values[1])
+        start += 1
+        x_num.append(start)
+
+
+plt.figure(figsize=(6, 5)) 
+plt.plot(x_num,q_values_hit,label = 'hit')
+plt.plot(x_num,q_values_stand,label = 'stand')
+plt.title('Q-value')
+plt.legend()
+plt.savefig('./test5.png' )
+plt.show()
+    
