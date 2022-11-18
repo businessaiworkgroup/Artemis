@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
+from torch.distributions import Categorical
 
 # 网络参数初始化，采用均值为 0，方差为 0.1 的高斯分布
 def init_weights(m):
@@ -73,7 +74,6 @@ class ACAgent(object):
         if np.random.uniform() < self.epsilon:  # ϵ-greedy 策略对动作进行采取，先固定
             action_value = self.actor_net(s)
             action = torch.max(action_value, dim=1)[1].item()
-            print ('action_value training', action_value, action)
         else:
             action = np.random.randint(0, self.num_actions)
         return action
@@ -102,8 +102,8 @@ class ACAgent(object):
         q_critic = self.critic_net(s)  # 价值对当前状态进行打分
         q_next = self.target_net(s_).detach()  # 目标网络对下一个状态进行打分
 
-        q_target = r + self.discount_factor * q_next  # 更新 TD 目标
-        td_error = (q_critic - q_target).detach()  # TD 误差
+        q_target = r + self.discount_factor * q_next if not done else torch.tensor([r], dtype=torch.float) # 更新 TD 目标
+        td_error = (q_target - q_critic).detach()  # TD 误差
 
         # 更新价值网络V(s)
         loss_critic = self.criterion_critic(q_critic, q_target)
@@ -112,8 +112,9 @@ class ACAgent(object):
         self.optimizer_critic.step()
 
         # 更新策略网络Actor
-        log_q_actor = torch.log(q_actor)
-        actor_loss = log_q_actor[a] * td_error
+        dist = Categorical(q_actor)
+        log_prob = dist.log_prob(torch.tensor([a], dtype=torch.float))
+        actor_loss = -log_prob * td_error
         self.optimizer_actor.zero_grad()
         actor_loss.backward()
         self.optimizer_actor.step()
