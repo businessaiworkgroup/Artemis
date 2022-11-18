@@ -16,7 +16,7 @@ print("Number of players:", env.num_players)
 print("Shape of state:", env.state_shape)
 print("Shape of action:", env.action_shape)
 
-agent = ACAgent(learning_rate_actor=0.001, learning_rate_critic=0.01)
+agent = ACAgent(learning_rate_actor=0.001, learning_rate_critic=0.01, network_dim=128)
 
 env.set_agents([agent for _ in range(env.num_players)])
 
@@ -36,7 +36,7 @@ for episode in range(50000):
     for ts in trajectories[0]:
         agent.feed(ts)
 
-    if episode % 200 == 0:
+    if episode % 400 == 0:
         ret = tournament(env, 1000)
         print("episode:{}, reward:{}".format(episode, ret))
         x_points.append(episode)

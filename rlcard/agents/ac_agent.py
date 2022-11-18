@@ -15,10 +15,10 @@ def init_weights(m):
 
 # 策略网络
 class Actor(nn.Module):
-    def __init__(self, num_actions, num_spaces):
+    def __init__(self, num_actions, num_spaces, dim):
         super(Actor, self).__init__()
-        self.net = nn.Sequential(nn.Linear(num_spaces, 50), nn.ReLU(),
-                                 nn.Linear(50, num_actions))  # 输出为各个动作的概率，维度为2
+        self.net = nn.Sequential(nn.Linear(num_spaces, dim), nn.ReLU(),
+                                 nn.Linear(dim, num_actions))  # 输出为各个动作的概率，维度为num_actions
     def forward(self, s):
         output = self.net(s)
         output = F.softmax(output, dim=-1)  # 概率归一化
@@ -27,10 +27,10 @@ class Actor(nn.Module):
 
 # 价值网络
 class Critic(nn.Module):
-    def __init__(self, num_spaces):
+    def __init__(self, num_spaces, dim):
         super(Critic, self).__init__()
-        self.net = nn.Sequential(nn.Linear(num_spaces, 20), nn.ReLU(),
-                                 nn.Linear(20, 1))  # 输出值是对当前状态的打分，维度为 1
+        self.net = nn.Sequential(nn.Linear(num_spaces, dim), nn.ReLU(),
+                                 nn.Linear(dim, 1))  # 输出值是对当前状态的打分，维度为 1
     def forward(self, s):
         output = self.net(s)
         return output
@@ -46,13 +46,14 @@ class ACAgent(object):
         epsilon=0.9,
         target_replace_iter=100,
         num_actions=2,
-        num_spaces=2):
+        num_spaces=2,
+        network_dim=128):
 
         # 初始化策略网络，价值网络和目标网络。价值网络和目标网络使用同一个网络
         self.actor_net = Actor(num_actions,
-                               num_spaces).apply(init_weights)
-        self.critic_net = Critic(num_spaces).apply(init_weights)
-        self.target_net = Critic(num_spaces).apply(init_weights)
+                               num_spaces, network_dim).apply(init_weights)
+        self.critic_net = Critic(num_spaces, network_dim).apply(init_weights)
+        self.target_net = Critic(num_spaces, network_dim).apply(init_weights)
         self.learn_step_counter = 0  # 记录学习步数
         self.optimizer_actor = optim.Adam(self.actor_net.parameters(),
                 lr=learning_rate_actor)  # 策略网络优化器
