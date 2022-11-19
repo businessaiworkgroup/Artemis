@@ -33,8 +33,8 @@ class BlackjackJudger:
 
                 player bust (whether dealer bust or not) => game.winner[playerX] = -1
                 player and dealer tie => game.winner[playerX] = 1
-                dealer bust and player not bust => game.winner[playerX] = 2
-                player get higher score than dealer => game.winner[playerX] = 2
+                dealer bust and player not bust => game.winner[playerX] = 2 2 ->1
+                player get higher score than dealer => game.winner[playerX] = 2 2->1
                 dealer get higher score than player => game.winner[playerX] = -1
                 game.winner[playerX] = 0 => the game is still ongoing
                 '''
@@ -42,10 +42,10 @@ class BlackjackJudger:
         if game.players[game_pointer].status == 'bust':
             game.winner['player' + str(game_pointer)] = -1
         elif game.dealer.status == 'bust':
-            game.winner['player' + str(game_pointer)] = 2
+            game.winner['player' + str(game_pointer)] = 2 # 2->1
         else:
             if game.players[game_pointer].score > game.dealer.score:
-                game.winner['player' + str(game_pointer)] = 2
+                game.winner['player' + str(game_pointer)] = 2 # 2->1
             elif game.players[game_pointer].score < game.dealer.score:
                 game.winner['player' + str(game_pointer)] = -1
             else:

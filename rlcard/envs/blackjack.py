@@ -20,8 +20,17 @@ class BlackjackEnv(Env):
         self.default_game_config = DEFAULT_GAME_CONFIG
         self.game = Game()
         super().__init__(config)
-        self.actions = ['hit', 'stand']
-        self.state_shape = [[2] for _ in range(self.num_players)]
+        if self.num_actions == 3:
+            self.actions = ['hit', 'stand', 'prior_hit']
+        elif self.num_actions == 2:
+            self.actions = ['hit', 'stand']
+
+        if self.share_policy and self.num_players>1:
+            self.state_shape = [[2+2] for _ in range(self.num_players)] # 2->3
+        elif self.num_players>1:
+            self.state_shape = [[2 + 1] for _ in range(self.num_players)]  # 2->3
+        else:
+            self.state_shape = [[2+ 10] for _ in range(self.num_players)]  # 2->3
         self.action_shape = [None for _ in range(self.num_players)]
 
     def _get_legal_actions(self):
@@ -48,15 +57,73 @@ class BlackjackEnv(Env):
         my_cards = cards[0]
         dealer_cards = cards[1]
 
+        card_mean = 6.923
+        remained_card_value = 0
+        normalisation = False
+        card_distribution = [0 for _ in range(10)]
+        full_card_distribution = [0 for _ in range(13)]
+        for the_card in state['record_card']:
+            if the_card[1].isdigit():
+                card_distribution[int(the_card[1])-1] +=1
+                full_card_distribution[int(the_card[1]) - 1] += 1
+            elif the_card[1] == 'A':
+                card_distribution[0] += 1
+                full_card_distribution[0] += 1
+            else:
+                card_distribution[9] += 1
+                if the_card[1] == 'T':
+                    full_card_distribution[9] += 1
+                elif the_card[1] == 'J':
+                    full_card_distribution[10] += 1
+                elif the_card[1] == 'Q':
+                    full_card_distribution[11] += 1
+                elif the_card[1] == 'K':
+                    full_card_distribution[12] += 1
+            if normalisation:
+                if the_card[1].isdigit():
+                    remained_card_value = remained_card_value + (int(the_card[1]) - card_mean) / 5 / self.game.num_decks
+                elif the_card[1] == 'A':
+                    remained_card_value = remained_card_value + (6 - card_mean) / 5 / self.game.num_decks
+                else:
+                    remained_card_value = remained_card_value + (10 - card_mean) / 5 / self.game.num_decks
+            else:
+                if the_card[1].isdigit():
+                    if int(the_card[1]) <7:
+                        remained_card_value -= 1/ self.game.num_decks
+                else:
+                    remained_card_value += 1/ self.game.num_decks
+
+        noise = np.random.normal(remained_card_value/5, 0.5, 1)
+
         my_score = get_score(my_cards)
         dealer_score = get_score(dealer_cards)
-        obs = np.array([my_score, dealer_score])
+
+
+        # obs = np.array([my_score, dealer_score, remained_card_value])
+        obs = np.array([my_score/31, dealer_score/31] + [card/8 for card in card_distribution])
+        # obs = np.array([my_score, dealer_score] + [card for card in full_card_distribution])
+        # obs = np.array([my_score / 31, dealer_score / 31, remained_card_value / 10 + 0.5])
+        # print('player_id',state['player_id'] , self.game.game_pointer)
+        # if self.num_players > 1:
+        #     obs = np.array([my_score / 31, dealer_score / 31, remained_card_value / 10 + 0.5])
+        # else:
+        #     obs = np.array([my_score/31, dealer_score/31])
+        if self.share_policy and self.num_players>1:
+            obs = np.append(obs, state['player_id']/(self.num_players-1))
+        # print('observation',obs)
+        # print(self.game.is_over(),'player' + str(self.game.game_pointer) + ' hand', state['player' + str(self.game.game_pointer) + ' hand'])
+        # print(self.game.is_over(),'recorded_card',self.game.game_pointer,state['record_card'])
+
+
 
         legal_actions = OrderedDict({i: None for i in range(len(self.actions))})
         extracted_state = {'obs': obs, 'legal_actions': legal_actions}
         extracted_state['raw_obs'] = state
         extracted_state['raw_legal_actions'] = [a for a in self.actions]
         extracted_state['action_record'] = self.action_recorder
+
+        extracted_state['remained_card_value'] = remained_card_value
+        # print(extracted_state['legal_actions'])
         return extracted_state
 
     def get_payoffs(self):
