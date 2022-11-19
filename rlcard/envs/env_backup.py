@@ -47,10 +47,7 @@ class Env(object):
 
         # Set random seed, default is None
         self.seed(config['seed'])
-
         self.share_policy = True
-
-
 
 
     def reset(self):
@@ -63,7 +60,6 @@ class Env(object):
                 (int): The begining player
         '''
         state, player_id = self.game.init_game()
-        self.action_phase = 0
         self.action_recorder = []
         return self._extract_state(state), player_id
 
@@ -81,6 +77,7 @@ class Env(object):
                 (int): The ID of the next player
         '''
         if not raw_action:
+            # print(action)
             action = self._decode_action(action)
 
         self.timestep += 1
@@ -122,24 +119,6 @@ class Env(object):
         '''
         self.agents = agents
 
-    def get_actions(self, is_training=False):
-        actions = []
-        for player_id in range(self.num_players):
-            state = self.get_state(player_id)
-            if not is_training:
-                if self.share_policy:
-                    action, _ = self.agents[0].eval_step(state)
-                else:
-                    action, _ = self.agents[player_id].eval_step(state)
-            else:
-                if self.share_policy:
-                    action = self.agents[0].step(state)
-                else:
-                    action = self.agents[player_id].step(state)
-            actions.append(action)
-        return actions
-
-
     def run(self, is_training=False):
         '''
         Run a complete game, either for evaluation or training RL agent.
@@ -158,26 +137,12 @@ class Env(object):
         '''
         trajectories = [[] for _ in range(self.num_players)]
         state, player_id = self.reset()
-        # print('yes')
-        # print(self.get_actions(is_training=is_training))
 
-        if self.action_phase == 0:
-            # agents_actions = [2 for _ in range(self.num_players)]
-            # print(is_training)
-            agents_actions = self.get_actions(is_training=is_training)
-            player_id = self.game.decide_prior(agents_actions)
-            state = self.get_state(player_id)
-            action = agents_actions[player_id]
-            # print('ini',agents_actions, player_id,self.game.game_pointer)
+        # Loop to play the game
+        trajectories[player_id].append(state)
+        while not self.is_over():
+            # Agent plays
 
-            phase_flag = True
-            for id in range(self.num_players):
-                if agents_actions[id] == 2 and self.game.hand_pointer[id] == False:
-                    phase_flag = False
-                    # print('stop phase 2')
-            if phase_flag:
-                self.action_phase = 1
-        else:
             if not is_training:
                 if self.share_policy:
                     action, _ = self.agents[0].eval_step(state)
@@ -188,76 +153,25 @@ class Env(object):
                     action = self.agents[0].step(state)
                 else:
                     action = self.agents[player_id].step(state)
-            # if self.action_phase == 0:
-            #     agents_actions = [1, 2]
-            #     # agents_actions = self.get_actions(is_training= is_training)
-            #     player_id = self.game.decide_prior(agents_actions)
-            #     if agents_actions[player_id] == 2:
-            #         action = 2
-            #     else:
-            #         state = self.get_state(player_id)
-            #         action = self.agents[player_id].step(state)
-            #     phase_flag = True
-            #     for id in range(self.num_players):
-            #         if agents_actions[id] == 2 and self.game.hand_pointer[id] == False:
-            #             phase_flag = False
-            #             # print('stop phase 2')
-            #     if phase_flag:
-            #         self.action_phase = 1
 
-
-
-        # Loop to play the game
-        trajectories[player_id].append(state)
-        while not self.is_over():
-            # Agent plays
-            # if first_action:
-            #     first_action = False
+            # if not is_training:
+            #     action, _ = self.agents[player_id].eval_step(state)
             # else:
-            #     if not is_training:
-            #         action, _ = self.agents[player_id].eval_step(state)
-            #     else:
-            #         action = self.agents[player_id].step(state)
+            #     action = self.agents[player_id].step(state)
 
             # Environment steps
             if self.share_policy:
                 next_state, next_player_id = self.step(action, self.agents[0].use_raw)
             else:
                 next_state, next_player_id = self.step(action, self.agents[player_id].use_raw)
+            # next_state, next_player_id = self.step(action, self.agents[player_id].use_raw)
+
             # Save action
             trajectories[player_id].append(action)
-
 
             # Set the state and player
             state = next_state
             player_id = next_player_id
-            #
-            if self.action_phase == 0:
-                # agents_actions = [2 for _ in range(self.num_players)]
-                agents_actions = self.get_actions(is_training=is_training)
-                player_id = self.game.decide_prior(agents_actions)
-                state = self.get_state(player_id)
-                action = agents_actions[player_id]
-                # print('after first', agents_actions, player_id, self.game.game_pointer, self.game.hand_pointer)
-
-                phase_flag = True
-                for id in range(self.num_players):
-                    if agents_actions[id] == 2 and self.game.hand_pointer[id] == False:
-                        phase_flag = False
-                #         print('stop phase 2')
-                if phase_flag:
-                    self.action_phase = 1
-            else:
-                if not is_training:
-                    if self.share_policy:
-                        action, _ = self.agents[0].eval_step(state)
-                    else:
-                        action, _ = self.agents[player_id].eval_step(state)
-                else:
-                    if self.share_policy:
-                        action = self.agents[0].step(state)
-                    else:
-                        action = self.agents[player_id].step(state)
 
             # Save state.
             if not self.game.is_over():
@@ -267,10 +181,10 @@ class Env(object):
         for player_id in range(self.num_players):
             state = self.get_state(player_id)
             trajectories[player_id].append(state)
-        # print('1',trajectories)
+
         # Payoffs
         payoffs = self.get_payoffs()
-        # print(self.game.hand_pointer)
+
         return trajectories, payoffs
 
     def is_over(self):
