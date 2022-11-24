@@ -164,7 +164,7 @@ def reorganize(trajectories, payoffs):
     for player in range(num_players):
         for i in range(0, len(trajectories[player])-2, 2):
             if i ==len(trajectories[player])-3:
-                reward = payoffs[player]
+                reward = sum(payoffs[player]) # change this to sum the reward of the players
                 done =True
             else:
                 reward, done = 0, False
@@ -204,22 +204,48 @@ def tournament(env, num):
     Returns:
         A list of avrage payoffs for each player
     '''
-    payoffs = [0 for _ in range(env.num_players)]
+    payoffs = [[0 for _ in range(env.num_players)] for _ in range(env.num_players)]
+    win_lose_counter = [[0 for _ in range(env.num_players)] for _ in range(env.num_players)]
+    win_counter = [[0 for _ in range(env.num_players)] for _ in range(env.num_players)]
     counter = 0
+
     while counter < num:
         _, _payoffs = env.run(is_training=False)
+        # print('1',_payoffs)
         if isinstance(_payoffs, list):
-            for _p in _payoffs:
-                for i, _ in enumerate(payoffs):
-                    payoffs[i] += _p[i]
+            print('yes')
+            for _thepayoffs in _payoffs:
+                for player_id in range(env.num_players):
+                    for i, _p in enumerate(_thepayoffs[player_id]):
+                        payoffs[player_id][i] += _p
+                        if _p == -1 or _p == 1:
+                            win_lose_counter[player_id][i] += 1
+                            if _p == 1:
+                                win_counter[player_id][i] += 1
                 counter += 1
         else:
-            for i, _ in enumerate(payoffs):
-                payoffs[i] += _payoffs[i]
+            for player_id in range(env.num_players):
+                for i, _p in enumerate(_payoffs[player_id]):
+                    payoffs[player_id][i] += _p
+                    if _p == -1 or _p == 1 or _p == -4 or _p == 4:
+                        # print(_p, player_id)
+                        win_lose_counter[player_id][i] += 1
+                        if _p == 1 or _p == 4:
+                            win_counter[player_id][i] += 1
             counter += 1
+    print(win_lose_counter)
+    print(win_counter)
     for i, _ in enumerate(payoffs):
-        payoffs[i] /= counter
-    return payoffs
+        payoffs[i] = float(sum(payoffs[i]))/counter
+    if win_lose_counter[0][1] == 0:
+        win_lose_counter[0][1] = 0.0001
+    if win_lose_counter[1][1] == 0:
+        win_lose_counter[1][1] = 0.0001
+    values=[[win_counter[0][0]/win_lose_counter[0][0],  win_counter[0][1]/win_lose_counter[0][1]], \
+            [win_counter[1][0] / win_lose_counter[1][0], win_counter[1][1] / win_lose_counter[1][1]]]
+    print('win rate player 0', values[0][0],  values[0][1])
+    print('win rate player 1', values[1][0], values[1][1])
+    return sum(payoffs), values
 
 def plot_curve(csv_path, save_path, algorithm):
     ''' Read data from csv file and plot the results
