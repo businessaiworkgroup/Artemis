@@ -7,6 +7,9 @@ import torch.nn.functional as F
 import numpy as np
 from torch.distributions import Categorical
 
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print("DEVICE is:{}".format(DEVICE))
+
 # 网络参数初始化，采用均值为 0，方差为 0.1 的高斯分布
 def init_weights(m):
     if isinstance(m, nn.Linear):
@@ -19,6 +22,9 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.net = nn.Sequential(nn.Linear(num_spaces, dim), nn.ReLU(),
                                  nn.Linear(dim, num_actions))  # 输出为各个动作的概率，维度为num_actions
+        if torch.cuda.is_available():
+            self.net = self.net.cuda()
+
     def forward(self, s):
         output = self.net(s)
         output = F.softmax(output, dim=-1)  # 概率归一化
@@ -31,6 +37,9 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         self.net = nn.Sequential(nn.Linear(num_spaces, dim), nn.ReLU(),
                                  nn.Linear(dim, 1))  # 输出值是对当前状态的打分，维度为 1
+        if torch.cuda.is_available():
+            self.net = self.net.cuda()
+
     def forward(self, s):
         output = self.net(s)
         return output
@@ -68,7 +77,9 @@ class ACAgent(object):
         self.num_actions = num_actions
 
     def choose_action(self, s, is_training=True):
-        s = torch.unsqueeze(torch.FloatTensor(s), dim=0)  # 增加维度
+        s = torch.tensor(s, device=DEVICE)
+        s = s.float()
+        s = torch.unsqueeze(s, dim=0)  # 增加维度
         if not is_training:
             action_value = self.actor_net(s)
             return torch.max(action_value, dim=1)[1].item()
@@ -95,15 +106,18 @@ class ACAgent(object):
             self.target_net.load_state_dict(self.critic_net.state_dict())
 
         self.learn_step_counter += 1
+        
+        s = torch.tensor(s, device=DEVICE)
+        s = s.float()
 
-        s = torch.FloatTensor(s)
-        s_ = torch.FloatTensor(s_)
+        s_ = torch.tensor(s_, device=DEVICE)
+        s_ = s_.float()
 
         q_actor = self.actor_net(s)  # 策略网络
         q_critic = self.critic_net(s)  # 价值对当前状态进行打分
         q_next = self.target_net(s_).detach()  # 目标网络对下一个状态进行打分
 
-        q_target = r + self.discount_factor * q_next if not done else torch.tensor([r], dtype=torch.float) # 更新 TD 目标
+        q_target = r + self.discount_factor * q_next if not done else torch.tensor([r], dtype=torch.float, device=DEVICE) # 更新 TD 目标
         td_error = (q_target - q_critic).detach()  # TD 误差
 
         # 更新价值网络V(s)
@@ -114,7 +128,7 @@ class ACAgent(object):
 
         # 更新策略网络Actor
         dist = Categorical(q_actor)
-        log_prob = dist.log_prob(torch.tensor([a], dtype=torch.float))
+        log_prob = dist.log_prob(torch.tensor([a], dtype=torch.float, device=DEVICE))
         actor_loss = -log_prob * td_error
         self.optimizer_actor.zero_grad()
         actor_loss.backward()
