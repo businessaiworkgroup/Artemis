@@ -7,11 +7,14 @@ from rlcard.games.blackjack import Judger
 
 class BlackjackGame:
 
-    def __init__(self, allow_step_back=False):
+    def __init__(self, allow_step_back=False, add_all_player_state=False, allow_hidden_card=False):
         ''' Initialize the class Blackjack Game
         '''
         self.allow_step_back = allow_step_back
         self.np_random = np.random.RandomState()
+        
+        self.add_all_player_state = add_all_player_state
+        self.allow_hidden_card = allow_hidden_card
 
     def configure(self, game_config):
         ''' Specifiy some game specific parameters, such as number of players
@@ -101,26 +104,7 @@ class BlackjackGame:
             else:
                 self.game_pointer += 1
 
-
-            
-            
-
-        hand = [card.get_index() for card in self.players[self.game_pointer].hand]
-
-        if self.is_over():
-            dealer_hand = [card.get_index() for card in self.dealer.hand]
-        else:
-            dealer_hand = [card.get_index() for card in self.dealer.hand[1:]]
-
-        for i in range(self.num_players):
-            next_state['player' + str(i) + ' hand'] = [card.get_index() for card in self.players[i].hand]
-        next_state['dealer hand'] = dealer_hand
-        next_state['actions'] = ('hit', 'stand')
-        next_state['state'] = (hand, dealer_hand)
-
-        
-
-        return next_state, self.game_pointer
+        return self.get_state(self.game_pointer), self.game_pointer
 
     def step_back(self):
         ''' Return to the previous state of the game
@@ -174,20 +158,40 @@ class BlackjackGame:
                 Although key 'state' have duplicated information with key 'player hand' and 'dealer hand', I couldn't remove it because of other codes
                 To remove it, we need to change dqn agent too in my opinion
                 '''
-        state = {}
-        state['actions'] = ('hit', 'stand')
+        # state = {}
+        # state['actions'] = ('hit', 'stand')
+        # hand = [card.get_index() for card in self.players[player_id].hand]
+        # if self.is_over():
+        #     dealer_hand = [card.get_index() for card in self.dealer.hand]
+        # else:
+        #     dealer_hand = [card.get_index() for card in self.dealer.hand[1:]]
+
+        # for i in range(self.num_players):
+        #     state['player' + str(i) + ' hand'] = [card.get_index() for card in self.players[i].hand]
+        # state['dealer hand'] = dealer_hand
+        # state['state'] = (hand, dealer_hand)
+        next_state = {}
         hand = [card.get_index() for card in self.players[player_id].hand]
+
         if self.is_over():
             dealer_hand = [card.get_index() for card in self.dealer.hand]
         else:
             dealer_hand = [card.get_index() for card in self.dealer.hand[1:]]
 
         for i in range(self.num_players):
-            state['player' + str(i) + ' hand'] = [card.get_index() for card in self.players[i].hand]
-        state['dealer hand'] = dealer_hand
-        state['state'] = (hand, dealer_hand)
+            next_state['player' + str(i) + ' hand'] = [card.get_index() for card in self.players[i].hand]
+        next_state['dealer hand'] = dealer_hand
+        next_state['actions'] = ('hit', 'stand')
 
-        return state
+        if self.add_all_player_state:
+            another_game_pointer = int(not self.game_pointer)
+            opposite_hand = [card.get_index() for card in self.players[another_game_pointer].hand]
+            if self.allow_hidden_card:
+                opposite_hand = opposite_hand[1:]
+            next_state['state'] = (hand, opposite_hand, dealer_hand)
+        else:
+            next_state['state'] = (hand, dealer_hand)
+        return next_state
 
     def is_over(self):
         ''' Check if the game is over

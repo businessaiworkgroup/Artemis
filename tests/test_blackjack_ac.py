@@ -9,6 +9,7 @@ from rlcard.agents.random_agent import RandomAgent
 import numpy as np
 
 import matplotlib.pyplot as plt
+from copy import deepcopy
 
 env = make("blackjack")
 print("Number of actions:", env.num_actions)
@@ -16,9 +17,9 @@ print("Number of players:", env.num_players)
 print("Shape of state:", env.state_shape)
 print("Shape of action:", env.action_shape)
 
-agent = ACAgent(learning_rate_actor=0.001, learning_rate_critic=0.01, network_dim=128)
+agent = ACAgent(learning_rate_actor=0.001, learning_rate_critic=0.01, network_dim=128, num_spaces=env.state_shape[0][0])
 
-env.set_agents([agent for _ in range(env.num_players)])
+env.set_agents([deepcopy(agent) for _ in range(env.num_players)])
 
 from rlcard.utils import (
     tournament,
@@ -33,8 +34,11 @@ y_points = []
 for episode in range(50000):
     trajectories, payoffs = env.run(is_training=True)
     trajectories = reorganize(trajectories, payoffs)
+
     for ts in trajectories[0]:
-        agent.feed(ts)
+        env.agents[0].feed(ts)
+    for ts in trajectories[1]:
+        env.agents[1].feed(ts)
 
     if episode % 400 == 0:
         ret = tournament(env, 1000)
