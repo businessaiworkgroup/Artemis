@@ -4,8 +4,12 @@ from collections import OrderedDict
 from rlcard.envs import Env
 from rlcard.games.blackjack import Game
 
+ADD_ALL_PLAYER_STATE = True
+ALLOW_HIDDEN_CARD = True
+STATE_SHAPE = 3
+
 DEFAULT_GAME_CONFIG = {
-        'game_num_players': 1,
+        'game_num_players': 2,
         'game_num_decks': 1
         }
 
@@ -16,12 +20,15 @@ class BlackjackEnv(Env):
     def __init__(self, config):
         ''' Initialize the Blackjack environment
         '''
+        self.add_all_player_state = ADD_ALL_PLAYER_STATE
+        self.allow_hidden_card = ALLOW_HIDDEN_CARD
+
         self.name = 'blackjack'
         self.default_game_config = DEFAULT_GAME_CONFIG
-        self.game = Game()
+        self.game = Game(add_all_player_state=self.add_all_player_state, allow_hidden_card=self.allow_hidden_card)
         super().__init__(config)
         self.actions = ['hit', 'stand']
-        self.state_shape = [[2] for _ in range(self.num_players)]
+        self.state_shape = [[STATE_SHAPE] for _ in range(self.num_players)]
         self.action_shape = [None for _ in range(self.num_players)]
 
     def _get_legal_actions(self):
@@ -46,11 +53,23 @@ class BlackjackEnv(Env):
         '''
         cards = state['state']
         my_cards = cards[0]
-        dealer_cards = cards[1]
+
+        if self.add_all_player_state:
+            dealer_cards = cards[2]
+            opposite_cards = cards[1]
+        else:
+            dealer_cards = cards[1]
+            opposite_cards = None
 
         my_score = get_score(my_cards)
+        opposite_score = get_score(opposite_cards)
         dealer_score = get_score(dealer_cards)
-        obs = np.array([my_score, dealer_score])
+        
+        if self.add_all_player_state:
+            obs = np.array([my_score, opposite_score, dealer_score])
+        else:
+            obs = np.array([my_score, dealer_score])
+    
 
         legal_actions = OrderedDict({i: None for i in range(len(self.actions))})
         extracted_state = {'obs': obs, 'legal_actions': legal_actions}
@@ -91,6 +110,8 @@ class BlackjackEnv(Env):
 
 rank2score = {"A":11, "2":2, "3":3, "4":4, "5":5, "6":6, "7":7, "8":8, "9":9, "T":10, "J":10, "Q":10, "K":10}
 def get_score(hand):
+    if not hand:
+        return 0
     score = 0
     count_a = 0
     for card in hand:

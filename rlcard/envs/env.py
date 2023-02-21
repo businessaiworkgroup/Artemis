@@ -147,6 +147,7 @@ class Env(object):
 
             # Environment steps
             next_state, next_player_id = self.step(action, self.agents[player_id].use_raw)
+
             # Save action
             trajectories[player_id].append(action)
 
