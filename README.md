@@ -19,9 +19,13 @@ Based on the original BlackJack Env from [RLcard](https://github.com/datamllab/r
 
 `rlcard.envs.env.Env()`: the environment with player action of asking for card in prioirty for training the DQN agents
 
+`rlcard.envs.env.blackjack.BlackjackEnv()`: changed to fit the state action space of the agents with different game rules and card recordinf stragedy.
+
 `rlcard.games.balckjack.game_backup.BlackjackGame()`: the standard game rule with player action of stand and hit
 
 `rlcard.games.balckjack.game.BlackjackGame()`: the game rule with player action of hit for card in prioirty, hit and stand
+
+`rlcard.games.balckjack.dealer.BlackjackDealer()`: the dealer with the ability to fold some cards and add into the seen cards for analysing the influence of some known card distribution on the win rates of the players.
 
 ### Train the agents:
 ```
