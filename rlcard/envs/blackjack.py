@@ -146,11 +146,11 @@ class BlackjackEnv(Env):
                 for ii in range(len(self.game.winner['player' + str(i)])):
                     if ii == 1:
                         if self.game.winner['player' + str(i)][ii] == 2:
-                            payoffs[i].append(1)  # Dealer bust or player get higher score than dealer
+                            payoffs[i].append(4)  # Dealer bust or player get higher score than dealer
                         elif self.game.winner['player' + str(i)][ii] == 1:
                             payoffs[i].append(0)  # Dealer and player tie
                         else:
-                            payoffs[i].append(-1)
+                            payoffs[i].append(-4)
                     else:
                         if self.game.winner['player' + str(i)][ii] == 2:
                             payoffs[i].append(1)  # Dealer bust or player get higher score than dealer
