@@ -7,7 +7,7 @@
 `rlcard.agents.sac_agent.SAC()`: the agent using soft actor-critic for training
 
 ### 2. Environment
-Based on the original BlackJack Env from [RLcard](https://github.com/datamllab/rlcard)
+Based on the original BlackJack Env from [RLcard](https://github.com/datamllab/rlcard), the major change has been made to `rlcard/envs/blackjack.py`, `rlcard/envs/env_player.py`, `rlcard/games/blackjack/game_backup.py` and `rlcard/games/blackjack/dealer.py` for adding the distribution of the seen cards and the adversarial interaction between the agents.
 
 
 ### Train the agents:
