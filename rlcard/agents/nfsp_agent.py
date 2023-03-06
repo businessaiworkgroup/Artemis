@@ -55,9 +55,9 @@ class NFSPAgent(object):
                  q_replay_memory_init_size=100,
                  q_update_target_estimator_every=1000,
                  q_discount_factor=0.99,
-                 q_epsilon_start=0.06,
+                 q_epsilon_start=0.3, # 0.06 -> 0.95
                  q_epsilon_end=0,
-                 q_epsilon_decay_steps=int(1e6),
+                 q_epsilon_decay_steps=int(2e4), # 1e6 -> 5e3
                  q_batch_size=32,
                  q_train_every=1,
                  q_mlp_layers=None,

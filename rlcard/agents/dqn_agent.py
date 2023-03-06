@@ -31,6 +31,7 @@ import torch
 import torch.nn as nn
 from collections import namedtuple
 from copy import deepcopy
+import torch.nn.functional as F
 
 from rlcard.utils.utils import remove_illegal
 
@@ -44,16 +45,16 @@ class DQNAgent(object):
     '''
     def __init__(self,
                  replay_memory_size=20000,
-                 replay_memory_init_size=100,
+                 replay_memory_init_size=2000, # 100 -> 1000
                  update_target_estimator_every=1000,
                  discount_factor=0.99,
-                 epsilon_start=1.0,
-                 epsilon_end=0.1,
-                 epsilon_decay_steps=20000,
-                 batch_size=32,
+                 epsilon_start=0.8,
+                 epsilon_end=0.05, # 0.05 -> 0
+                 epsilon_decay_steps=15000, # 20000 -> 5000
+                 batch_size=1024, # 32->1024
                  num_actions=2,
                  state_shape=None,
-                 train_every=1,
+                 train_every=1, # 1->2
                  mlp_layers=None,
                  learning_rate=0.00005,
                  device=None):
@@ -147,7 +148,7 @@ class DQNAgent(object):
         best_action_idx = legal_actions.index(np.argmax(q_values))
         probs[best_action_idx] += (1.0 - epsilon)
         action_idx = np.random.choice(np.arange(len(probs)), p=probs)
-
+        # print('here',legal_actions[action_idx])
         return legal_actions[action_idx]
 
     def eval_step(self, state):
@@ -177,7 +178,6 @@ class DQNAgent(object):
         Returns:
             q_values (numpy.array): a 1-d array where each entry represents a Q value
         '''
-        
         q_values = self.q_estimator.predict_nograd(np.expand_dims(state['obs'], 0))[0]
         masked_q_values = -np.inf * np.ones(self.num_actions, dtype=float)
         legal_actions = list(state['legal_actions'].keys())
@@ -210,7 +210,9 @@ class DQNAgent(object):
 
         # Perform gradient descent update
         state_batch = np.array(state_batch)
-
+        # print('state',type(state_batch),state_batch)
+        # print('action',type(action_batch),action_batch)
+        # print('target',type(target_batch),target_batch)
         loss = self.q_estimator.update(state_batch, action_batch, target_batch)
         print('\rINFO - Step {}, rl-loss: {}'.format(self.total_t, loss), end='')
 
@@ -264,7 +266,13 @@ class Estimator(object):
         self.device = device
 
         # set up Q model and place it in eval mode
-        qnet = EstimatorNetwork(num_actions, state_shape, mlp_layers)
+        supervised_actionnet = SupervisedNetwork(num_actions, state_shape, mlp_layers)
+        supervised_actionnet = supervised_actionnet.to(self.device)
+        self.supervised_actionnet = supervised_actionnet
+        self.supervised_actionnet.eval()
+
+        # qnet = EstimatorNetwork(num_actions, state_shape, mlp_layers)
+        qnet = EstimatorNetwork(self.supervised_actionnet, num_actions, state_shape, mlp_layers)
         qnet = qnet.to(self.device)
         self.qnet = qnet
         self.qnet.eval()
@@ -276,9 +284,14 @@ class Estimator(object):
 
         # set up loss function
         self.mse_loss = nn.MSELoss(reduction='mean')
+        self.kl_loss = nn.KLDivLoss(reduction="batchmean", log_target=True)
 
         # set up optimizer
-        self.optimizer =  torch.optim.Adam(self.qnet.parameters(), lr=self.learning_rate)
+        self.optimizer = torch.optim.Adam(list(self.qnet.fc1.parameters())+\
+                                          list(self.qnet.fc2.parameters())+\
+                                          list(self.qnet.fc3.parameters()) + \
+                                          list(self.qnet.actionvation.parameters()), lr=self.learning_rate)
+        # self.optimizer =  torch.optim.Adam(self.qnet.parameters(), lr=self.learning_rate)
 
     def predict_nograd(self, s):
         ''' Predicts action values, but prediction is not included
@@ -321,12 +334,18 @@ class Estimator(object):
 
         # (batch, state_shape) -> (batch, num_actions)
         q_as = self.qnet(s)
+        supervised_q = self.supervised_actionnet(s)
 
         # (batch, num_actions) -> (batch, )
-        Q = torch.gather(q_as, dim=-1, index=a.unsqueeze(-1)).squeeze(-1)
+        Q = F.log_softmax(torch.gather(q_as, dim=-1, index=a.unsqueeze(-1)).squeeze(-1),-1)
+        Supervised_Q = F.log_softmax(torch.gather(supervised_q, dim=-1, index=a.unsqueeze(-1)).squeeze(-1), -1)
 
         # update model
-        batch_loss = self.mse_loss(Q, y)
+        batch_mse_loss = self.mse_loss(Q, y)
+        sup_kl_loss =self.kl_loss(Q, Supervised_Q)
+        batch_loss = batch_mse_loss
+        # batch_loss = sup_kl_loss *10
+        # print(batch_loss,batch_mse_loss, sup_kl_loss *10)
         batch_loss.backward()
         self.optimizer.step()
         batch_loss = batch_loss.item()
@@ -341,7 +360,7 @@ class EstimatorNetwork(nn.Module):
         It is just a series of tanh layers. All in/out are torch.tensor
     '''
 
-    def __init__(self, num_actions=2, state_shape=None, mlp_layers=None):
+    def __init__(self, supervised_actionnet, num_actions=2, state_shape=None, mlp_layers=None):
         ''' Initialize the Q network
 
         Args:
@@ -351,19 +370,29 @@ class EstimatorNetwork(nn.Module):
         '''
         super(EstimatorNetwork, self).__init__()
 
+        self.supervised_actionnet = supervised_actionnet
         self.num_actions = num_actions
         self.state_shape = state_shape
         self.mlp_layers = mlp_layers
 
         # build the Q network
         layer_dims = [np.prod(self.state_shape)] + self.mlp_layers
-        fc = [nn.Flatten()]
-        fc.append(nn.BatchNorm1d(layer_dims[0]))
-        for i in range(len(layer_dims)-1):
-            fc.append(nn.Linear(layer_dims[i], layer_dims[i+1], bias=True))
-            fc.append(nn.Tanh())
-        fc.append(nn.Linear(layer_dims[-1], self.num_actions, bias=True))
-        self.fc_layers = nn.Sequential(*fc)
+        self.flatten = nn.Flatten()
+        self.normalisation = nn.BatchNorm1d(layer_dims[0])
+        self.fc1 = nn.Linear(layer_dims[0], layer_dims[1], bias=True)
+        # self.actionvation = nn.ReLU()
+        self.actionvation = nn.Tanh()
+        self.fc2 = nn.Linear(layer_dims[1], layer_dims[2], bias=True)
+        self.fc3 = nn.Linear(layer_dims[2], self.num_actions, bias=True)
+
+        # layer_dims = [np.prod(self.state_shape)] + self.mlp_layers
+        # fc = [nn.Flatten()]
+        # fc.append(nn.BatchNorm1d(layer_dims[0]))
+        # for i in range(len(layer_dims)-1):
+        #     fc.append(nn.Linear(layer_dims[i], layer_dims[i+1], bias=True))
+        #     fc.append(nn.Tanh())
+        # fc.append(nn.Linear(layer_dims[-1], self.num_actions, bias=True))
+        # self.fc_layers = nn.Sequential(*fc)
 
     def forward(self, s):
         ''' Predict action values
@@ -371,7 +400,70 @@ class EstimatorNetwork(nn.Module):
         Args:
             s  (Tensor): (batch, state_shape)
         '''
-        return self.fc_layers(s)
+
+        x = self.flatten(s)
+        # print(x.size())
+        x_norm = self.supervised_actionnet.normalisation(x)
+
+        with torch.no_grad():
+            x_sup_norm = self.supervised_actionnet.normalisation(x)
+            sup_1 = self.supervised_actionnet.fc1(x_sup_norm)
+            sup_a = self.supervised_actionnet.actionvation(sup_1)
+            sup_2 = self.supervised_actionnet.fc2(sup_a)
+            sup_2a = self.supervised_actionnet.actionvation(sup_2)
+            sup_out = self.supervised_actionnet.fc3(sup_2a)
+
+        x = self.fc1(x_sup_norm)
+        x = self.actionvation(x)
+        x = self.fc2(x)
+        x = self.actionvation(x)
+        out = self.fc3(x)
+        return out
+        # return self.fc_layers(s)
+
+class SupervisedNetwork(nn.Module):
+    ''' The function approximation network for Estimator
+        It is just a series of tanh layers. All in/out are torch.tensor
+    '''
+
+    def __init__(self, num_actions=2, state_shape=None, mlp_layers=None):
+        ''' Initialize the Q network
+
+        Args:
+            num_actions (int): number of legal actions
+            state_shape (list): shape of state tensor
+            mlp_layers (list): output size of each fc layer
+        '''
+        super(SupervisedNetwork, self).__init__()
+
+        self.num_actions = num_actions
+        self.state_shape = state_shape
+        self.mlp_layers = mlp_layers
+
+        # build the Q network
+        layer_dims = [np.prod(self.state_shape)] + self.mlp_layers
+        self.flatten = nn.Flatten()
+        self.normalisation = nn.BatchNorm1d(layer_dims[0])
+        self.fc1 = nn.Linear(layer_dims[0], layer_dims[1], bias=True)
+        # self.actionvation = nn.ReLU()
+        self.actionvation = nn.Tanh()
+        self.fc2 = nn.Linear(layer_dims[1], layer_dims[2], bias=True)
+        self.fc3 = nn.Linear(layer_dims[2], self.num_actions, bias=True)
+
+    def forward(self, s):
+        ''' Predict action values
+
+        Args:
+            s  (Tensor): (batch, state_shape)
+        '''
+        x = self.flatten(s)
+        x = self.normalisation(x)
+        x = self.fc1(x)
+        x = self.actionvation(x)
+        x= self.fc2(x)
+        x = self.actionvation(x)
+        out = self.fc3(x)
+        return out
 
 class Memory(object):
     ''' Memory for saving transitions
