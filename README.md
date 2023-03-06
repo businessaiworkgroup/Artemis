@@ -20,6 +20,7 @@ Based on the original BlackJack Env from [RLcard](https://github.com/datamllab/r
 
 `rlcard.games.balckjack.dealer.BlackjackDealer()`: the dealer with the ability to fold some cards and add into the seen cards for analysing the influence of some known card distribution on the win rates of the players.
 
+`rlcard.utils.utils.tournament(env, num)`: add the win rate of the players
 
 ### Train the agents:
 ```
