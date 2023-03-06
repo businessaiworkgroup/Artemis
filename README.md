@@ -11,6 +11,15 @@
 ### 2. Environment
 Based on the original BlackJack Env from [RLcard](https://github.com/datamllab/rlcard), the major change has been made to `rlcard/envs/blackjack.py`, `rlcard/envs/env_player.py`, `rlcard/games/blackjack/game_backup.py` and `rlcard/games/blackjack/dealer.py` for adding the distribution of the seen cards and the adversarial interaction between the agents.
 
+`rlcard.envs.env_backup.Env()`: the standard environment
+
+`rlcard.envs.env_ac.Env()`: the standard environment for training the SAC agents
+
+`rlcard.envs.env_hand_ac.Env()`: the environment with player action of asking for card in prioirty for training the SAC agents
+
+`rlcard.envs.env.Env()`: the environment with player action of asking for card in prioirty for training the DQN agents
+
+
 
 ### Train the agents:
 ```
