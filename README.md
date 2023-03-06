@@ -1,6 +1,6 @@
 # Artemis
 
-## Branch `player_interaction_zmy` is the codebase for Standard training of the agents
+## Branch `opta2c_zmy` is the codebase for Standard training of the agents
 
 ### Train the agents:
 ```
