@@ -9,10 +9,10 @@ import math, random, copy
 LR_ACTOR = 5e-4    # 策略网络的学习率
 LR_CRITIC = 1e-3   # 价值网络的学习率
 GAMMA = 0.9         # 奖励的折扣因子
-EPSILON = 0.9      # ϵ-greedy 策略的概率
+EPSILON = 1      # ϵ-greedy 策略的概率
 TARGET_REPLACE_ITER = 1000                 # 目标网络更新的频率
 N_ACTIONS = 2 #env.action_space.n            # 动作数
-# N_SPACES = 12 #env.observation_space.shape[0] # 状态数量
+N_SPACES = 12 #env.observation_space.shape[0] # 状态数量
 
 # 网络参数初始化，采用均值为 0，方差为 0.1 的高斯分布
 def init_weights(m) :
@@ -102,10 +102,10 @@ class Critic(nn.Module) :
 
 # A2C 的主体函数
 class ACAgent:
-    def __init__(self, state_shape=None, mlp_layers=[64, 64], num_actions=2,memory_size =2000,  batch_size = 32):
+    def __init__(self, state_shape=None, mlp_layers=[64, 64], num_actions=2, batch_size = 32):
         # 初始化策略网络，价值网络和目标网络。价值网络和目标网络使用同一个网络
         self.mlp_layers = mlp_layers
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         # self.actor_net, self.critic_net, self.target_net = Actor().apply(init_weights), Critic().apply(
         #     init_weights), Critic().apply(init_weights)
         self.actor_net = Actor(state_shape[0], self.mlp_layers[0], num_actions).apply(init_weights).to(device=self.device)
@@ -122,9 +122,8 @@ class ACAgent:
         self.EPSILON = EPSILON
         self.EPSILON_STEP = 0.0001
         self.EPSILON_END = 1
-        self.memory = Memory(memory_size,batch_size)
+        self.memory = Memory(batch_size)
         self.batch_size = batch_size
-        self.memory_size = memory_size
 
 
 
@@ -146,7 +145,6 @@ class ACAgent:
         return action
 
     def step(self, state):
-        # print(state['obs'])
         return self.choose_action(state['obs'])
 
     def eval_step(self, state):
@@ -166,7 +164,6 @@ class ACAgent:
 
         s = s['obs']
         s_ = s_['obs']
-        # print(s,a,r,s_, done)
         self.memory.save(s, a, r, s_, done)
         # a = a.argmax()
         self.learn_step_counter += 1
@@ -244,13 +241,12 @@ class Memory(object):
     ''' Memory for saving transitions
     '''
 
-    def __init__(self, memory_size, batch_size):
+    def __init__(self, batch_size):
         ''' Initialize
         Args:
             memory_size (int): the size of the memroy buffer
         '''
-        self.memory_size = memory_size
-        self.batch_size = batch_size
+        self.memory_size = batch_size
         self.memory = []
 
     def save(self, state, action, reward, next_state, done):
@@ -279,8 +275,7 @@ class Memory(object):
             next_state_batch (list): a batch of states
             done_batch (list): a batch of dones
         '''
-        samples = self.memory[-self.batch_size:]
+        samples = self.memory
         # print(samples)
-        # self.memory = self.memory
-        print(len(self.memory))
+        self.memory = []
         return map(np.array, zip(*samples))
