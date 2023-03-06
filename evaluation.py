@@ -47,8 +47,8 @@ best_score = -1
 # agent.q_estimator.qnet.load_state_dict(torch.load('experiments/leduc_holdem_dqn_result/fd_fold10_3232/model_cifar.pt'))
 # with Logger("experiments/leduc_holdem_dqn_result/sn_4_1(2)/") as logger:
 
-agent.actor_net.load_state_dict(torch.load('C:/Users/13862/Desktop/rlcard-master/Sup_Actor_model_cifar.pt'))
-agent.critic_net.load_state_dict(torch.load('C:/Users/13862/Desktop/rlcard-master/Sup_Critic_model_cifar.pt'))
+agent.actor_net.load_state_dict(torch.load('C:/Users/13862/Desktop/rlcard-master/Actor_model_cifar.pt'))
+agent.critic_net.load_state_dict(torch.load('C:/Users/13862/Desktop/rlcard-master/Critic_model_cifar.pt'))
 for episode in range(20): # 1000->1000
 
     # Generate data from the environment
